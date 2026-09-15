@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import type { ComponentType, ReactNode, SVGProps } from 'react';
-import { Chip, Progress as ProgressBar } from '@heroui/react';
-import type { ItemState, Progress } from '@/lib/types';
-import { STATE_META } from '@/lib/describe';
+import { Chip, Progress, Tooltip } from '@heroui/react';
+import { AcademicCapIcon, ArrowUpTrayIcon, DocumentTextIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
+import type { ContractorStatus, HistoryEntry, RequirementType, Score, SlotState } from '@/lib/types';
+import { STATE_META, STATUS_META, TYPE_META } from '@/lib/describe';
+import { fmtDateTime } from '@/lib/dates';
 
 export type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -73,35 +75,131 @@ export function Card({
   );
 }
 
-export function StateChip({ state }: { state: ItemState }) {
+export function StatusChip({ status, size = 'sm' }: { status: ContractorStatus; size?: 'sm' | 'md' }) {
+  const m = STATUS_META[status];
+  return (
+    <Tooltip content={m.hint} delay={400}>
+      <Chip size={size} variant="flat" color={m.color} className="font-medium">
+        {status}
+      </Chip>
+    </Tooltip>
+  );
+}
+
+export function StateChip({ state, extra }: { state: SlotState; extra?: string }) {
   const m = STATE_META[state];
   return (
     <Chip size="sm" variant="flat" color={m.color} className="font-medium">
       {m.label}
+      {extra ? ` · ${extra}` : ''}
     </Chip>
   );
 }
 
-/** "5 of 7 done" with a bar. */
-export function ProgressLine({ progress, className = 'min-w-[150px]' }: { progress: Progress; className?: string }) {
-  if (!progress.total) return <span className="text-ink-3">Nothing asked yet</span>;
-  const pct = Math.round((progress.done * 100) / progress.total);
+export const TYPE_ICON: Record<RequirementType, IconType> = {
+  FORM: DocumentTextIcon,
+  DOCUMENT: ArrowUpTrayIcon,
+  TRAINING: AcademicCapIcon,
+  SIGNOFF: PencilSquareIcon,
+};
+
+export function TypeBadge({ type, label = true }: { type: RequirementType; label?: boolean }) {
+  const Icon = TYPE_ICON[type];
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      <ProgressBar aria-label="Done" size="sm" value={pct} color={pct === 100 ? 'success' : pct >= 60 ? 'warning' : 'danger'} className="flex-1" />
-      <span className="tabular whitespace-nowrap text-[12.5px] text-ink-2">
-        {progress.done} of {progress.total}
-      </span>
-    </div>
+    <span className="inline-flex items-center gap-1.5 text-ink-2" title={TYPE_META[type].label}>
+      <Icon className="h-4 w-4 shrink-0 text-ink-3" />
+      {label && <span>{TYPE_META[type].short}</span>}
+    </span>
   );
 }
 
-export function CompliantChip({ compliant, progress }: { compliant: boolean; progress?: Progress }) {
-  if (progress && !progress.total) return null;
+export function TypeIconTile({ type, className = '' }: { type: RequirementType; className?: string }) {
+  const Icon = TYPE_ICON[type];
   return (
-    <Chip size="sm" variant="flat" color={compliant ? 'success' : 'danger'} className="font-medium">
-      {compliant ? 'All good' : 'Missing items'}
-    </Chip>
+    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-50 text-primary ${className}`}>
+      <Icon className="h-5 w-5" />
+    </span>
+  );
+}
+
+export function scoreColor(pct: number): 'success' | 'primary' | 'warning' | 'danger' {
+  if (pct >= 100) return 'success';
+  if (pct >= 75) return 'primary';
+  if (pct >= 50) return 'warning';
+  return 'danger';
+}
+
+export function ScoreBar({ score, width = 'min-w-[130px]' }: { score: Score; width?: string }) {
+  if (score.pct === null) return <span className="text-ink-3">—</span>;
+  return (
+    <Tooltip content={`${score.compliant} of ${score.total} scored items compliant`} delay={300}>
+      <div className={`flex items-center gap-2 ${width}`}>
+        <span className="tabular w-10 text-right font-medium text-ink">{score.pct}%</span>
+        <Progress aria-label="Compliance score" size="sm" value={score.pct} color={scoreColor(score.pct)} className="flex-1" />
+      </div>
+    </Tooltip>
+  );
+}
+
+export interface DonutSegment {
+  key: string;
+  value: number;
+  color: string;
+}
+
+export function Donut({
+  segments,
+  size = 164,
+  thickness = 20,
+  label,
+  sublabel,
+}: {
+  segments: DonutSegment[];
+  size?: number;
+  thickness?: number;
+  label?: ReactNode;
+  sublabel?: string;
+}) {
+  const r = (size - thickness) / 2;
+  const circ = 2 * Math.PI * r;
+  const shown = segments.filter((s) => s.value > 0);
+  const total = shown.reduce((n, s) => n + s.value, 0) || 1;
+  const gap = shown.length > 1 ? 3 : 0;
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={sublabel ?? 'Chart'}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#EEF0F6" strokeWidth={thickness} />
+      {shown.map((s) => {
+        const len = (s.value / total) * circ;
+        const dash = Math.max(0, len - gap);
+        const el = (
+          <circle
+            key={s.key}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={thickness}
+            strokeDasharray={`${dash} ${circ - dash}`}
+            strokeDashoffset={-offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+        offset += len;
+        return el;
+      })}
+      {label !== undefined && (
+        <text x="50%" y="49%" textAnchor="middle" dominantBaseline="middle" fill="#1A202C" style={{ fontSize: 28, fontWeight: 600 }}>
+          {label}
+        </text>
+      )}
+      {sublabel && (
+        <text x="50%" y="64%" textAnchor="middle" fill="#6E7191" style={{ fontSize: 11 }}>
+          {sublabel}
+        </text>
+      )}
+    </svg>
   );
 }
 
@@ -116,7 +214,51 @@ export function EmptyState({ title, body, action, icon: Icon }: { title: string;
   );
 }
 
-export function Stat({ label, value, hint, tone = 'neutral', href }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info'; href?: string }) {
+export function KV({ items, labelWidth = '9.5rem' }: { items: [ReactNode, ReactNode][]; labelWidth?: string }) {
+  return (
+    <dl className="grid gap-x-4 gap-y-2 text-[13px]" style={{ gridTemplateColumns: `${labelWidth} minmax(0,1fr)` }}>
+      {items.map(([k, v], i) => (
+        <div key={i} className="contents">
+          <dt className="text-ink-3">{k}</dt>
+          <dd className="min-w-0 break-words text-ink">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function Timeline({ entries }: { entries: HistoryEntry[] }) {
+  const list = [...entries].reverse();
+  return (
+    <ol className="relative space-y-3 border-l border-line pl-4">
+      {list.map((e, i) => (
+        <li key={`${e.at}-${i}`} className="relative">
+          <span className={`absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white ${i === 0 ? 'bg-primary' : 'bg-gray-300'}`} />
+          <p className="text-[13px] text-ink">
+            <span className="font-medium">{e.action}</span>
+            <span className="text-ink-3"> · {e.by}</span>
+          </p>
+          <p className="text-[11.5px] text-ink-3">{fmtDateTime(e.at)}</p>
+          {e.note && <p className="mt-1 rounded-md bg-gray-50 px-2 py-1.5 text-[12.5px] text-ink-2">“{e.note}”</p>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function Stat({
+  label,
+  value,
+  hint,
+  tone = 'neutral',
+  href,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+  tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'info';
+  href?: string;
+}) {
   const bar = { neutral: 'bg-gray-300', good: 'bg-success', warn: 'bg-warning', bad: 'bg-danger', info: 'bg-primary' }[tone];
   const inner = (
     <div className="card relative h-full overflow-hidden px-4 py-3.5">
@@ -149,3 +291,10 @@ export function Callout({ tone = 'info', title, children }: { tone?: 'info' | 'w
     </div>
   );
 }
+
+export const STATUS_COLORS: Record<ContractorStatus, string> = {
+  Approved: '#12A150',
+  Pending: '#E3A008',
+  New: '#A1A1AA',
+  Denied: '#E5484D',
+};

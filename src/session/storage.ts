@@ -1,8 +1,8 @@
 import type { Session } from '@/lib/types';
 
-// Demo sign-in. In production the host's login cookie identifies the user and their company.
-export const SESSION_KEY = 'ezc-simple-session';
-export const DEFAULT_SESSION: Session = { user_id: 'U-PRIYA' };
+// Demo sign-in. In production the host's login cookie identifies the member and their organization.
+export const SESSION_KEY = 'ezc-session';
+export const DEFAULT_SESSION: Session = { member_id: 'M-PRIYA' };
 
 export function readSession(): Session | null {
   if (typeof window === 'undefined') return null;
@@ -10,7 +10,7 @@ export function readSession(): Session | null {
     const raw = window.localStorage.getItem(SESSION_KEY);
     if (!raw) return DEFAULT_SESSION;
     const s = JSON.parse(raw) as Partial<Session>;
-    if (s && typeof s.user_id === 'string' && s.user_id) return { user_id: s.user_id };
+    if (s && typeof s.member_id === 'string' && s.member_id) return { member_id: s.member_id };
   } catch {
     // blocked storage or bad JSON
   }

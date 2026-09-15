@@ -1,72 +1,97 @@
 # Contractor Compliance (EZForm module)
 
-A simple EZForm module for contractor paperwork. Every company can work **both ways** from one account:
+A standalone EZForm module for managing contractor companies, their compliance requirements, reviews and site access. It follows the same pattern as the MOC module (`workflow/`, served at `/ez-workflow`): its own Next.js app, served at **`/ez-contractor`** on the same host so it shares the login cookie.
 
-- **My contractors**: companies that work for you. You list what you need, they upload it, you approve it.
-- **My clients**: companies you work for. You upload what each one asks for and keep it current, so nothing expires before they notice. A client that isn't on EZForm can be added by you; then you enter its list yourself and your uploads count straight away.
-
-People belong to their own company, so they are **internal** to it. A client sees a contractor's people as **external** users.
-
-It's its own Next.js app, served at **`/ez-contractor`**, and runs on an in-browser demo API until the ezformsapi controllers exist.
+Until the ezformsapi controllers exist, the app runs on an **in-browser demo API** with seeded data for three companies that run contractor programs. One of them, Delta Mechanical, is also a contractor for the other two.
 
 ## Run it
 
 ```bash
 cd contractor
-npm install
+npm install        # or reuse node_modules from containers/ (same versions)
 npm run dev        # http://localhost:3040/ez-contractor
 ```
 
-Data is saved in the browser. Use the **login menu** (top right) to switch company, and the **date menu** to move time forward or reset the data.
+Everything is saved in the browser's localStorage. Use the **date menu** in the header to move time forward (runs the nightly renewal/reminder/expiry check) or to reset the demo data. Use the **login menu** (top right) to sign in as someone from any company.
 
 ## Five-minute demo
 
-1. **Priya Nair (Riverside Energy)**, a power plant that hires contractors.
-   - **Home**: 3 uploads waiting for review, and what's expired or expiring.
-   - **Contractors → Keystone Scaffolding**: review the insurance certificate, approve it or send it back with a note.
-   - **Who can work**: Dana Brooks can't work because her heights training expired.
-2. **Luis Ortega (Ortega Roofing)**, a contractor.
-   - **Clients → Riverside Energy**: upload Priyanka's site orientation. It waits for Riverside to review.
-   - Sign back in as Priya and approve it.
-3. **Chen Wei (Delta Mechanical)**, which works both ways.
-   - **Clients**: Riverside (on EZForm, reviews Delta's uploads) and Harbor Chemicals (not on EZForm, tracked by Delta itself). Harbor's insurance expires in 12 days, so Delta can renew it before Harbor notices.
-   - **Contractors → Ironwood Welding**: Delta hires its own contractor.
-4. Date menu → **+30 days**: items expire, and people are blocked in **Who can work**.
+1. **Overview** (admin): status donut, "Waiting on you", recent activity, what's expiring.
+2. **Review queue** → open *Keystone Scaffolding · Certificate of Liability Insurance* → approve, or send back with a note.
+3. **Contractors → Ortega Roofing** → workers tab: Dana is blocked (course expired), Priyanka is new. Click **View as Luis**.
+4. **Contractor portal** (Luis): renew the insurance certificate (upload + expiry date), have Priyanka take *Working at Heights* (slides + quiz, auto-approved), ask for an exception on Dana's course.
+5. Back as **Priya Nair**: grant the exception in the review queue, then **Gate check-in** → scan `ORT-1002`: Dana is now clear.
+6. **Requirements**: create a requirement (Form, Document, Training or Policy signoff), edit a group, see the version warning.
+7. Date menu → **+30 days**: renewals open, reminder emails appear under **Emails & reminders**, lapsed items turn red and block at the gate.
+
+### One company on both sides
+
+8. Sign in as **Chen Wei (Delta Mechanical)**. The sidebar has *Your contractors* (Delta's own program for Ironwood Welding and Kestrel Insulation) and *Your clients* (Northwind Utilities and Riverside Energy).
+9. **Workers**: one roster for Delta. Expand Jonas Berg and **Put on crew** for Riverside Energy; Riverside's worker trainings are assigned to him only.
+10. Still as Chen: **Review queue → Subcontractor checks**. Ironwood Welding is Delta's subcontractor on Riverside's turbine shutdown, so its workers' comp certificate comes to Delta first. **Pass to Riverside Energy**.
+11. Sign in as **Sean Doyle (Ironwood Welding)** → *Riverside Energy*. The checklist is Delta's Riverside requirements minus the ones Riverside keeps for direct contractors (the prequalification questionnaire). Open *Certificate of Liability Insurance* → **Use this copy** sends the certificate Delta approved; it goes to Delta to check.
+12. Back as **Priya Nair**: Ironwood shows as *Subcontractor of Delta Mechanical Services*. Review the certificate Delta passed on, then **Approve subcontractor**. At **Gate check-in**, `IWF-1001` clears at the Turbine Hall only while Riverside approves Delta, Delta approves Ironwood, and Riverside approves Ironwood.
+13. **Add contractor** → type "kest" → Kestrel Insulation is already on EZForm, so you add the existing company instead of creating a second one.
+14. Any contractor-only login (for example Luis Ortega) → **Manage your own contractors** starts a program with a starter library.
 
 ## How it works
 
-| Record | What it is |
-| --- | --- |
-| Company | Name and contact. `on_ezform: false` for a client a contractor added itself |
-| User | Someone who signs in for a company |
-| Person | A member of a company's team. Tracked, gets a badge number, doesn't need to sign in |
-| Requirement | Something a client asks for: for the company or for each person, with or without an expiry date |
-| Link | Client ← contractor. `added_by: CLIENT` (the client reviews uploads) or `CONTRACTOR` (the contractor tracks the client itself) |
-| Upload | A file for one link × requirement (× person): waiting, approved or sent back |
+A company is never "a client" or "a contractor". It is an **organization**, and the role belongs to each **relationship** between two organizations. The same company can run its own program and work for other companies from one account.
 
-Rules, all in `src/mock/logic.ts`:
+| Record | Owned by | What it is |
+| --- | --- | --- |
+| Organization | itself | Company profile and contact, shared with every client. `program_enabled` turns on the client side |
+| Member | organization | A login. One member acts on both sides of their company |
+| Worker | organization (employer) | One roster and one badge ID, valid at every client |
+| Requirement, group, site | organization (as client) | Its program. Other companies never see or reuse it |
+| Relationship | client org → contractor org | Status (New, Pending, Approved, Denied), sites, groups, tags, and the **crew** (which of the contractor's workers work for this client). `sponsor_id` marks a subcontractor brought in by another contractor |
+| Assignment | relationship | One row per relationship × requirement (× crew member): current approval, open submission, exception, history |
 
-- A client's list applies to every contractor it adds. A self-tracked client has the list the contractor entered.
-- Each checklist line is **Not uploaded**, **Waiting for review**, **Sent back**, **Done**, **Expiring soon** (30 days or less) or **Expired**.
-- A new copy of something already approved waits for review while the old one keeps counting until it expires.
-- A person **can work** when every company item and every one of their own items is done.
+Access follows the relationship, not a role: every route checks whether the signed-in company is the client or the contractor on that record (`asClient` / `asContractor` in `src/mock/server.ts`).
+
+Rules (all in `src/mock/logic.ts`):
+
+- **Snapshots.** An assignment keeps the requirement version it was opened against. Editing the library updates only items nobody has started; everything else picks up the new version at its next renewal.
+- **Renewals.** 30 days before an approval expires, a renewal opens and the contractor gets a reminder (again at 7 days). The old approval keeps counting until it actually expires.
+- **Review.** Documents and forms go to a reviewer; training and signoffs count as soon as they're completed (configurable per requirement).
+- **Exceptions.** A contractor can ask for a waiver until a date; if granted, the item counts as compliant until then.
+- **Score.** Approved-and-unexpired (or waived) scored items ÷ scored items, separately for the company and for its workers.
+- **Gate.** A worker is cleared at a site only if the site's owner has a relationship with the worker's employer, the worker is on that crew, the contractor is Approved and assigned to the site, and every scored company item and every scored item of that worker is compliant.
+- **Crews.** Worker requirements go only to the crew for that client. Taking someone off a crew, or deactivating them, keeps their records so they come back intact.
+- **Shared identity.** Adding a contractor searches the EZForm directory first, so a company already on the platform is linked rather than duplicated. Its profile edits reach every client.
+- **Reuse.** A document requirement can reuse a copy another client already approved (same title, not expired). The server copies the approved evidence and the new client still reviews it.
+- **Flow-down.** A contractor brings one of its own approved contractors onto a client's work (*Your subcontractors here* on its client page). That creates a client → subcontractor relationship sponsored by the contractor's relationship with the same client:
+  - Requirements: the sponsor's groups plus the subcontractor's sites' groups, minus requirements the client marks *direct contractors only* (`flows_down: false`, a setting that doesn't bump the version). Groups the client assigns to the subcontractor directly always apply. Changes to the sponsor's groups or sites flow down; a subcontractor can only be on the sponsor's sites.
+  - Review: submissions that need review go to the sponsor first (*Subcontractor checks* in its review queue), then to the client. The client can review before the sponsor has checked; the history records it.
+  - Gate: the subcontractor's worker clears only if the client approves the sponsor and has it on that site, the sponsor still approves the subcontractor in its own program, the sponsor's scored company items are compliant, and the subcontractor's own record passes the usual checks.
+  - One tier only: a subcontractor can't bring in its own subcontractors yet.
 
 ## Code map
 
 ```
 src/
-  app/                  / (home), contractors, requirements, check-in, clients, people
-  components/           Checklist, upload/review/requirement/person modals, app shell
+  app/                  client side: the company's own program (dashboard, contractors, reviews, requirements, sites, gate, emails)
+  app/portal/           contractor side: all clients, clients/[id] checklist, item/[id], workers roster, profile, inbox
+  app/setup/            turn on the client side for a company that only works for others
+  components/           shared UI, review modal, editors, portal completion screens
   services/queries.ts   React Query hooks + Api.* calls (Controller/Action names)
   api/client.ts         axios instance; uses the demo adapter unless NEXT_PUBLIC_USE_MOCK_API=false
   mock/                 demo API: logic.ts (rules), server.ts (routes), seed.ts (data), db.ts (storage)
+  lib/                  types, dates, labels, form validation
 ```
 
 ## Moving to the real API
 
-1. Build the endpoints in `src/mock/server.ts` in ezformsapi (`Contractor/*`, `Client/*`, `Requirement/*`, `Upload/*`, `Person/*`, `CheckIn/GetList`), wrapped as `{ data, message }`.
-2. Set `NEXT_PUBLIC_USE_MOCK_API=false` and `NEXT_PUBLIC_API_BASE_URL`.
-3. Replace the demo login menu with the host session, and map Users and People to EZForm internal/external users.
-4. Store files with `File/Upload` instead of data URLs.
+The screens only call `Api.*` / `apiGet('Controller/Action')`, using the endpoint names proposed in the build plan (`Contractor/*`, `ComplianceRequirement/*`, `RequirementGroup/*`, `Site/*`, `Assignment/*`, `ComplianceActivity/GetList`, `Notification/GetOutbox`, `Gate/*`). When the .NET controllers ship:
 
-The earlier, fuller version (subcontractors, sites, requirement groups, exceptions, email reminders) is on the `full-demo` branch.
+1. Set `NEXT_PUBLIC_USE_MOCK_API=false` and `NEXT_PUBLIC_API_BASE_URL` (defaults to `/ezformsapi/api/v1/`).
+2. Implement the rules in `src/mock/logic.ts` server-side; responses are wrapped as `{ data, message }` like the rest of ezformsapi.
+3. Replace the demo login menu with the host session (the other apps rely on the host's cookie; `NEXT_PUBLIC_AUTH_TOKEN` is a dev-only fallback).
+4. Swap stored data URLs for `File/Upload` keys.
+5. Add the module to the server menu (`Menu/GetXmlMenus`) and the `/ez-contractor` path to the host.
+
+## EZForm extension points
+
+- **Form requirements** can name an EZForm template (`ezform_template_id`). Once wired, contractors fill that template (stages, submit rules) and the finished record becomes the evidence.
+- **Gate check-in** mirrors the Scan User field; the same compliance check can run inside EZForm site sign-in forms.
+- **Submit rules** can gain a "contractor compliance" value source so permits refuse to submit for a non-compliant contractor.

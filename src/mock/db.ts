@@ -2,7 +2,7 @@
 import type { DemoDB } from '@/lib/types';
 import { SCHEMA, buildSeed } from './seed';
 
-const KEY = 'ezc-simple-db';
+const KEY = 'ezc-demo-db';
 let cache: DemoDB | null = null;
 let listening = false;
 
@@ -38,8 +38,10 @@ export function loadDb(): DemoDB {
 }
 
 function stripLargeFiles(db: DemoDB): void {
-  for (const u of db.uploads) {
-    if (u.file.data_url && u.file.data_url.length > 60_000) u.file.data_url = null;
+  for (const a of db.assignments) {
+    for (const ev of [a.submission.evidence, a.approval?.evidence, ...a.previous.map((p) => p.evidence)]) {
+      if (ev && ev.kind === 'DOCUMENT' && ev.file.data_url && ev.file.data_url.length > 60_000) ev.file.data_url = null;
+    }
   }
 }
 
