@@ -1,67 +1,39 @@
-import type { AppliesTo, ContractorStatus, RequirementType, SlotState, TaskKind, Validity } from './types';
+import type { Item, ItemState } from './types';
+import { fmtDate, relDays } from './dates';
 
 export type ChipColor = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'danger';
 
-export const TYPE_META: Record<RequirementType, { label: string; short: string; examples: string; action: string }> = {
-  FORM: {
-    label: 'Form',
-    short: 'Form',
-    examples: 'Prequalification questionnaires, incident history, self-assessments',
-    action: 'Fill in',
-  },
-  DOCUMENT: {
-    label: 'Document upload',
-    short: 'Document',
-    examples: 'Insurance certificates, licences, operator cards, permits',
-    action: 'Upload',
-  },
-  TRAINING: {
-    label: 'Training',
-    short: 'Training',
-    examples: 'Site orientation, working at heights, task-specific courses',
-    action: 'Take course',
-  },
-  SIGNOFF: {
-    label: 'Policy signoff',
-    short: 'Signoff',
-    examples: 'Site safety rules, drug & alcohol policy, code of conduct',
-    action: 'Read & sign',
-  },
-};
-
-export const STATUS_META: Record<ContractorStatus, { color: ChipColor; hint: string }> = {
-  New: { color: 'default', hint: "Invited, but hasn't submitted an application yet." },
-  Pending: { color: 'warning', hint: 'Application submitted and waiting for a decision.' },
-  Approved: { color: 'success', hint: 'Approved to work, as long as they stay compliant.' },
-  Denied: { color: 'danger', hint: 'Not approved to work.' },
-};
-
-export const STATE_META: Record<SlotState, { label: string; color: ChipColor }> = {
-  NOT_STARTED: { label: 'Not started', color: 'default' },
-  SUBMITTED: { label: 'Awaiting review', color: 'primary' },
+export const STATE_META: Record<ItemState, { label: string; color: ChipColor }> = {
+  MISSING: { label: 'Not uploaded', color: 'default' },
+  WAITING: { label: 'Waiting for review', color: 'primary' },
   REJECTED: { label: 'Sent back', color: 'danger' },
-  APPROVED: { label: 'Approved', color: 'success' },
-  EXPIRING: { label: 'Expiring', color: 'warning' },
+  OK: { label: 'Done', color: 'success' },
+  EXPIRING: { label: 'Expiring soon', color: 'warning' },
   EXPIRED: { label: 'Expired', color: 'danger' },
-  WAIVED: { label: 'Exception', color: 'secondary' },
 };
 
-export const TASK_META: Record<TaskKind, { label: string }> = {
-  REVIEW: { label: 'Submission' },
-  EXCEPTION: { label: 'Exception request' },
-  APPLICATION: { label: 'Application' },
-  SPONSOR_CHECK: { label: 'Subcontractor check' },
-};
-
-export function describeValidity(v: Validity): string {
-  if (v.kind === 'NONE') return "Doesn't expire";
-  if (v.kind === 'DOCUMENT_DATE') return 'Expires on the date shown on the document';
-  const unit = v.every === 1 ? v.unit.replace(/s$/, '') : v.unit;
-  return `Valid for ${v.every} ${unit} after completion`;
+/** One line saying where an item stands in time. */
+export function itemWhen(i: Item): string {
+  const exp = i.approved?.expires_at;
+  switch (i.state) {
+    case 'OK':
+      return exp ? `Valid until ${fmtDate(exp)}` : 'No expiry';
+    case 'EXPIRING':
+      return `Expires ${fmtDate(exp)} (${relDays(i.expires_in_days ?? 0)})${i.pending?.status === 'WAITING' ? ' · new copy waiting for review' : ''}`;
+    case 'EXPIRED':
+      return `Expired ${fmtDate(exp)}`;
+    case 'WAITING':
+      return `Uploaded ${fmtDate(i.pending?.uploaded_at)}`;
+    case 'REJECTED':
+      return `Sent back ${fmtDate(i.pending?.reviewed_at)}`;
+    case 'MISSING':
+      return '';
+  }
 }
 
-export function describeApplies(a: AppliesTo): string {
-  return a === 'COMPANY' ? 'Once per company' : 'Each worker';
+/** "Liability insurance certificate" or "Working at heights training · Dana Brooks". */
+export function itemLabel(i: Item): string {
+  return i.person ? `${i.requirement.title} · ${i.person.name}` : i.requirement.title;
 }
 
 export function initials(name: string): string {
@@ -74,21 +46,16 @@ export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** "Riverside Energy's", "Delta Mechanical Services'". */
-export function possessive(name: string): string {
-  return /s$/i.test(name.trim()) ? `${name}'` : `${name}'s`;
+export function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** The name people use in running text after the first full mention: "Delta" for "Delta Mechanical Services". */
-export function shortOrg(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
-}
-
-/** "A", "A and B", "A, B and C". */
-export function listNames(names: string[]): string {
-  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
-export function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
+/** Browsers block opening data: URLs directly, so hand them over as blob URLs. */
+export async function openDataUrl(dataUrl: string): Promise<void> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

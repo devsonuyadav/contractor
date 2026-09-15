@@ -5,7 +5,7 @@ import AppShell from '@/components/shell/AppShell';
 
 export const metadata: Metadata = {
   title: 'Contractor Compliance · EZForm',
-  description: 'Contractor records, requirement library, review queue and gate check-in for EZForm.',
+  description: 'Track contractors that work for you and clients you work for.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
