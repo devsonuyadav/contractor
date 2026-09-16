@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Button, Spinner } from '@heroui/react';
-import { BuildingOffice2Icon, CheckCircleIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+import { Button, Chip, Spinner } from '@heroui/react';
+import { BuildingOffice2Icon, CheckCircleIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/24/outline';
+import AddClientModal from '@/components/portal/AddClientModal';
 import ChecklistRow, { sortByUrgency } from '@/components/portal/ChecklistRow';
 import { Card, EmptyState, PageHeader, ScoreBar, Stat, StatusChip } from '@/components/ui';
 import { plural, possessive } from '@/lib/describe';
@@ -12,6 +14,12 @@ import { usePortalOverview, useSessionContext } from '@/services/queries';
 export default function PortalOverviewPage() {
   const { data, isLoading } = usePortalOverview();
   const { data: ctx } = useSessionContext();
+  const [adding, setAdding] = useState(false);
+  const addButton = (
+    <Button color="primary" variant="flat" startContent={<PlusIcon className="h-4 w-4" />} onPress={() => setAdding(true)}>
+      Add a client
+    </Button>
+  );
 
   if (isLoading || !data) {
     return (
@@ -30,21 +38,25 @@ export default function PortalOverviewPage() {
   if (!clients.length) {
     return (
       <div className="space-y-6">
-        <PageHeader title="My compliance" description={`What the companies ${org.name} works for need from you. Nothing yet.`} />
+        <PageHeader title="My compliance" description={`What the companies ${org.name} works for need from you. Nothing yet.`} actions={addButton} />
         <Card>
           <EmptyState
             icon={BuildingOffice2Icon}
             title="No clients yet"
-            body="When a company adds you as a contractor on EZForm, its checklist shows up here. Your company profile and workers are ready to share."
+            body="A company on EZForm that adds you as its contractor appears here by itself. For a client that doesn't use EZForm, add it yourself and keep its paperwork here."
             action={
-              ctx && !ctx.program.enabled ? (
-                <Button as={Link} href="/setup" color="primary" variant="flat">
-                  Manage your own contractors instead
-                </Button>
-              ) : undefined
+              <div className="flex flex-wrap justify-center gap-2">
+                {addButton}
+                {ctx && !ctx.program.enabled && (
+                  <Button as={Link} href="/setup" variant="flat">
+                    Manage your own contractors
+                  </Button>
+                )}
+              </div>
             }
           />
         </Card>
+        <AddClientModal isOpen={adding} onClose={() => setAdding(false)} />
       </div>
     );
   }
@@ -53,7 +65,8 @@ export default function PortalOverviewPage() {
     <div className="space-y-6">
       <PageHeader
         title="My compliance"
-        description={`What ${clients.length === 1 ? 'the company you work for needs' : `the ${clients.length} companies you work for need`} from ${org.name}. Your profile, workers and documents are shared across all of them; each one keeps its own checklist and approval.`}
+        description={`What ${clients.length === 1 ? 'the company you work for needs' : `the ${clients.length} companies you work for need`} from ${org.name}. Your profile, workers and documents are shared across all of them; each one keeps its own checklist. Clients that don't use EZForm you add and keep yourself.`}
+        actions={addButton}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -75,9 +88,17 @@ export default function PortalOverviewPage() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold text-ink">{c.client.name}</p>
                 {c.sponsor_name && <p className="truncate text-[12.5px] text-primary-700">As {possessive(c.sponsor_name)} subcontractor</p>}
-                <p className="truncate text-[12.5px] text-ink-3">{c.site_names.length ? c.site_names.join(', ') : 'No sites assigned yet'}</p>
+                <p className="truncate text-[12.5px] text-ink-3">
+                  {c.self_managed ? 'Your own list · nobody reviews it' : c.site_names.length ? c.site_names.join(', ') : 'No sites assigned yet'}
+                </p>
               </div>
-              <StatusChip status={c.status} />
+              {c.self_managed ? (
+                <Chip size="sm" variant="flat" color="secondary" className="font-medium">
+                  Tracked by you
+                </Chip>
+              ) : (
+                <StatusChip status={c.status} />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3 text-[12.5px]">
               <div>
@@ -91,7 +112,7 @@ export default function PortalOverviewPage() {
             </div>
             <div className="flex items-center justify-between border-t border-line pt-3 text-[13px]">
               <span className={c.open_items ? 'font-medium text-ink' : 'text-ink-3'}>
-                {c.status === 'New' ? 'Application not sent · ' : ''}
+                {c.status === 'New' && !c.self_managed ? 'Application not sent · ' : ''}
                 {c.open_items ? `${plural(c.open_items, 'item')} to do` : 'Nothing to do'}
                 {c.subcontractors ? ` · ${plural(c.subcontractors, 'subcontractor')}` : ''}
               </span>
@@ -102,6 +123,8 @@ export default function PortalOverviewPage() {
           </Link>
         ))}
       </div>
+
+      <AddClientModal isOpen={adding} onClose={() => setAdding(false)} />
 
       <Card title="Needs your action, every client" subtitle={action.length ? plural(action.length, 'item') : undefined} bodyClass="p-0">
         {action.length ? (

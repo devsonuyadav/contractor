@@ -172,6 +172,11 @@ export interface Organization extends CompanyProfile {
   subscription_since?: string | null;
   /** EHSSoftware.io staff. They manage subscriptions instead of contractors. */
   is_ehs?: boolean;
+  /**
+   * A client a contractor added itself: the company has no account and nobody signs in for it.
+   * Only the contractor that created it can see it.
+   */
+  private_owner_id?: string;
 }
 
 /** A person who signs in for an organization. They can act on both sides of it. */
@@ -204,6 +209,8 @@ export interface Relationship {
    * relationship with the same client. Null for companies the client engaged directly.
    */
   sponsor_id?: string | null;
+  /** The contractor keeps this record itself: it writes the list and nobody reviews what it uploads. */
+  self_managed?: boolean;
 }
 
 /** A relationship seen with the contractor's profile flattened in: what screens call "a contractor". */
@@ -462,6 +469,8 @@ export interface ContractorDetail {
   inherited_groups: RequirementGroup[];
   /** Sites a subcontractor can be put on: the sponsor's sites with this client. */
   sponsor_site_ids: string[] | null;
+  /** For a client you keep yourself: the list you wrote, which only you can see. */
+  own_requirements: Requirement[];
 }
 
 export type TaskKind = 'REVIEW' | 'EXCEPTION' | 'APPLICATION' | 'SPONSOR_CHECK';
@@ -629,6 +638,8 @@ export interface ClientRow {
   profile_submitted_at?: string | null;
   sponsor_name: string | null;
   subcontractors: number;
+  /** Added and kept by you, for a client that doesn't use EZForm. */
+  self_managed: boolean;
 }
 
 export interface PortalOverview {

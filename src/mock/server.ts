@@ -114,6 +114,10 @@ const routes: Record<string, Handler> = {
   'GET Portal/GetInbox': (db, _ctx, req) =>
     db.outbox.filter((e) => e.audience === 'contractor' && e.to_org_id === req.me.org.id).map((e) => ({ ...e, client_name: L.findOrg(db, e.client_id).name })),
   'GET Portal/GetSubcontractorOptions': (db, ctx, req) => L.subcontractorOptions(ctx, asContractor(db, req, str(req.params.id))),
+  'POST Portal/AddClient': (db, ctx, req) => L.createSelfClient(db, req.me, req.body, ctx.now),
+  'POST Portal/SaveClientRequirement': (db, ctx, req) => L.saveSelfRequirement(db, req.me, L.asSelfManaged(db, req.me, str(req.body.relationship_id)), req.body, ctx.now),
+  'DELETE Portal/DeleteClientRequirement': (db, ctx, req) =>
+    L.deleteSelfRequirement(db, req.me, L.asSelfManaged(db, req.me, str(req.params.relationship_id)), str(req.params.id), ctx.now),
   'POST Portal/SponsorSubcontractor': (db, ctx, req) => L.sponsorSubcontractor(db, req.me, asContractor(db, req, str(req.body.id)), req.body, ctx.now),
 
   // Workers ----------------------------------------------------------------

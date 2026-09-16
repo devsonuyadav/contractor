@@ -99,7 +99,9 @@ export default function DocumentUpload({
             <ArrowPathRoundedSquareIcon className="h-5 w-5 text-primary" />
             Already approved by another client
           </p>
-          <p className="mb-2 mt-0.5 text-[12.5px] text-ink-2">Send the same copy instead of uploading again. This client still reviews it against its own rules.</p>
+          <p className="mb-2 mt-0.5 text-[12.5px] text-ink-2">
+            Send the same copy instead of uploading again.{req.needs_review ? ' This client still reviews it against its own rules.' : ' It counts as soon as you send it.'}
+          </p>
           <ul className="space-y-1.5">
             {reusable.slice(0, 4).map((d) => (
               <li key={d.assignment_id} className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-3 py-2">

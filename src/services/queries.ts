@@ -140,6 +140,23 @@ export interface SiteInput {
   group_ids: string[];
 }
 
+export interface SelfRequirementInput {
+  relationship_id: string;
+  id?: string;
+  title: string;
+  applies_to: 'COMPANY' | 'WORKER';
+  has_expiry: boolean;
+  document_hint?: string;
+}
+
+export interface SelfClientInput {
+  name: string;
+  trade?: string;
+  contact_name?: string;
+  contact_email?: string;
+  requirements: Omit<SelfRequirementInput, 'relationship_id' | 'id'>[];
+}
+
 export interface SyncResult {
   added: number;
   removed: number;
@@ -159,6 +176,9 @@ export const Api = {
   assignGroups: (b: { contractor_id: string; group_ids: string[] }) => apiPost<SyncResult>('Contractor/AssignGroups', b),
   assignSites: (b: { contractor_id: string; site_ids: string[] }) => apiPost<SyncResult>('Contractor/AssignSites', b),
   submitApplication: (id: string) => apiPost<{ id: string }>('Portal/SubmitApplication', { id }),
+  addSelfClient: (b: SelfClientInput) => apiPost<{ id: string; added: number }>('Portal/AddClient', b),
+  saveSelfRequirement: (b: SelfRequirementInput) => apiPost<SyncResult & { id: string }>('Portal/SaveClientRequirement', b),
+  deleteSelfRequirement: (b: { relationship_id: string; id: string }) => apiDelete<{ removed: number }>('Portal/DeleteClientRequirement', b),
   sponsorSubcontractor: (b: { id: string; program_relationship_id: string; site_ids: string[] }) => apiPost<{ id: string; added: number }>('Portal/SponsorSubcontractor', b),
 
   createWorker: (b: WorkerInput) => apiPost<{ id: string; badge_id: string; added: number }>('Worker/Create', b),

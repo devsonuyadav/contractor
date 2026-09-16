@@ -32,8 +32,9 @@ Everything is saved in the browser's localStorage. Use the **date menu** in the 
 11. Sign in as **Sean Doyle (Ironwood Welding)** → *Riverside Energy*. The checklist is Delta's Riverside requirements minus the ones Riverside keeps for direct contractors (the prequalification questionnaire). Open *Certificate of Liability Insurance* → **Use this copy** sends the certificate Delta approved; it goes to Delta to check.
 12. Back as **Priya Nair**: Ironwood shows as *Subcontractor of Delta Mechanical Services*. Review the certificate Delta passed on, then **Approve subcontractor**. At **Gate check-in**, `IWF-1001` clears at the Turbine Hall only while Riverside approves Delta, Delta approves Ironwood, and Riverside approves Ironwood.
 13. **Add contractor** → type "kest" → Kestrel Insulation is already on EZForm, so you add the existing company instead of creating a second one.
-14. Any contractor-only login (for example Luis Ortega) → **Manage your own contractors** → **Request access**. Managing your own contractors is a paid EZForm feature, so it waits for EHSSoftware.io.
-15. Sign in as **Sam Rivera (EHSSoftware.io)** → **Subscriptions** → **Approve** Ortega Roofing. Sign back in as Luis: the program screens are there, with a starter library.
+14. **My compliance → Add a client**: a company that doesn't use EZForm can't invite you, so you add it yourself. You write the list it asks you for, uploads count straight away, and renewals and reminders work as usual, so you renew before that client ever asks.
+15. Any contractor-only login (for example Luis Ortega) → **Manage your own contractors** → **Request access**. Managing your own contractors is a paid EZForm feature, so it waits for EHSSoftware.io.
+16. Sign in as **Sam Rivera (EHSSoftware.io)** → **Subscriptions** → **Approve** Ortega Roofing. Sign back in as Luis: the program screens are there, with a starter library.
 
 ## How it works
 
@@ -49,6 +50,8 @@ A company is never "a client" or "a contractor". It is an **organization**, and 
 | Assignment | relationship | One row per relationship × requirement (× crew member): current approval, open submission, exception, history |
 
 Access follows the relationship, not a role: every route checks whether the signed-in company is the client or the contractor on that record (`asClient` / `asContractor` in `src/mock/server.ts`).
+
+A client you add yourself (`self_managed` on the relationship) is a company with no account (`private_owner_id` on the organization): only you can see it, nobody reviews what you upload, and it never appears in the directory or the subscription list.
 
 Working **as a contractor** is free, because the client that invited you pays for it. Running **your own program** needs an EHSSoftware.io subscription: a company asks from `/setup`, and EHSSoftware.io staff (the Sam Rivera login) turn it on from **Subscriptions**. Turning it on the first time fills a starter library; turning it off hides the program screens but keeps everything, so turning it back on restores it.
 

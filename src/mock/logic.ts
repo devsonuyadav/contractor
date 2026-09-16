@@ -37,6 +37,7 @@ import type {
   QueueView,
   Relationship,
   Requirement,
+  RequirementGroup,
   RequirementContent,
   RequirementRow,
   RequirementSnapshot,
@@ -79,6 +80,8 @@ const RENEWAL_WINDOW = 30;
 
 export const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
 export const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => String(x)) : []);
+/** A list of objects from a request body, such as the starter requirements for a client you add. */
+export const objArr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 export function nowIso(db: DemoDB): string {
@@ -539,6 +542,7 @@ export function contractorDetail(rel: Relationship, ctx: Ctx, audience: 'admin' 
     sponsor_checks: audience === 'contractor' ? subs.flatMap((r) => slotsFor(ctx, r.id).filter((s) => s.awaiting_sponsor)) : [],
     inherited_groups: sp ? ctx.db.groups.filter((g) => sp.rel.group_ids.includes(g.id)) : [],
     sponsor_site_ids: sp ? sp.rel.site_ids : null,
+    own_requirements: rel.self_managed ? ctx.db.requirements.filter((r) => r.org_id === rel.client_id && !r.retired).sort((a, b) => a.title.localeCompare(b.title)) : [],
   };
 }
 
@@ -781,6 +785,7 @@ export function clientRow(rel: Relationship, ctx: Ctx): ClientRow {
     profile_submitted_at: rel.profile_submitted_at,
     sponsor_name: sponsorOf(ctx.db, rel)?.org.name ?? null,
     subcontractors: ctx.db.relationships.filter((r) => r.sponsor_id === rel.id).length,
+    self_managed: !!rel.self_managed,
   };
 }
 
@@ -999,7 +1004,7 @@ export function searchOrgs(ctx: Ctx, clientId: string, q: string): OrgMatch[] {
   const linked = new Set(relsAsClient(ctx, clientId).map((r) => r.contractor_id));
   const domain = term.includes('@') ? term.split('@')[1] : '';
   return ctx.db.orgs
-    .filter((o) => o.id !== clientId && !linked.has(o.id) && !o.is_ehs)
+    .filter((o) => o.id !== clientId && !linked.has(o.id) && !o.is_ehs && !o.private_owner_id)
     .filter((o) => o.name.toLowerCase().includes(term) || o.trade.toLowerCase().includes(term) || (!!domain && o.contact.email.toLowerCase().endsWith(`@${domain}`)))
     .slice(0, 6)
     .map((o) => ({ id: o.id, name: o.name, trade: o.trade, contact_name: o.contact.name, contact_email: o.contact.email, runs_program: o.program_enabled }));
@@ -1025,6 +1030,134 @@ export function createOrg(db: DemoDB, profile: { name: string; trade: string; co
   const member: Member = { id: newId(db, 'M'), org_id: org.id, name: profile.contact.name, title: profile.contact.title ?? '', email: profile.contact.email };
   db.members.push(member);
   return { org, member };
+}
+
+// ---------------------------------------------------------------------------
+// Clients you keep yourself
+//
+// A company that doesn't use EZForm can't invite you, so you add it here: you write the list it
+// asks you for, and what you upload counts straight away. Renewals and reminders work the same,
+// so you see something expiring long before that client asks for it.
+// ---------------------------------------------------------------------------
+
+/** Turns "Insurance certificate" into a document requirement nobody has to review. */
+function selfRequirementContent(b: Record<string, unknown>): RequirementContent {
+  const title = str(b.title).trim();
+  if (!title) throw new HttpError(400, 'Name the document.');
+  const forWorker = str(b.applies_to) === 'WORKER';
+  return {
+    title,
+    type: 'DOCUMENT',
+    description: str(b.description).trim() || `Asked for by this client${forWorker ? ', for each person on the job' : ''}.`,
+    applies_to: forWorker ? 'WORKER' : 'COMPANY',
+    validity: b.has_expiry === false ? { kind: 'NONE' } : { kind: 'DOCUMENT_DATE' },
+    scored: true,
+    // Nobody at the client reviews these: uploading is the whole job.
+    needs_review: false,
+    document_hint: str(b.document_hint).trim() || undefined,
+  };
+}
+
+const selfGroupOf = (db: DemoDB, rel: Relationship) => db.groups.find((g) => g.org_id === rel.client_id);
+
+/** The relationship, checked to be one the signed-in contractor keeps itself. */
+export function asSelfManaged(db: DemoDB, me: Me, relId: string): Relationship {
+  const rel = findRelationship(db, relId);
+  if (rel.contractor_id !== me.org.id) throw new HttpError(403, "You can only see your own company's records.");
+  if (!rel.self_managed) throw new HttpError(403, `${findOrg(db, rel.client_id).name} keeps this list on EZForm. Ask them to change it.`);
+  return rel;
+}
+
+export function createSelfClient(db: DemoDB, me: Me, body: Record<string, unknown>, now: string): { id: string; added: number } {
+  const name = str(body.name).trim();
+  if (!name) throw new HttpError(400, "Enter the client's name.");
+  const mine = db.relationships.filter((r) => r.contractor_id === me.org.id);
+  if (mine.some((r) => findOrg(db, r.client_id).name.toLowerCase() === name.toLowerCase())) {
+    throw new HttpError(409, `${name} is already one of your clients.`);
+  }
+  const onEzform = db.orgs.find((o) => !o.private_owner_id && !o.is_ehs && o.name.toLowerCase() === name.toLowerCase());
+  if (onEzform) {
+    throw new HttpError(409, `${onEzform.name} is already on EZForm. Ask them to add ${me.org.name} as a contractor, so they can review what you send.`);
+  }
+  const client: Organization = {
+    id: newId(db, 'O'),
+    name,
+    short: shortName(name),
+    trade: str(body.trade).trim() || 'Client',
+    contact: { name: str(body.contact_name).trim(), title: undefined, email: str(body.contact_email).trim(), phone: '' },
+    address: '',
+    created_at: now,
+    program_enabled: false,
+    subscription: 'NONE',
+    private_owner_id: me.org.id,
+  };
+  db.orgs.push(client);
+
+  const list = objArr(body.requirements).map(selfRequirementContent);
+  const ids = list.map((content) => {
+    const r: Requirement = { id: newId(db, 'R'), org_id: client.id, version: 1, created_at: now, updated_at: now, ...content };
+    db.requirements.push(r);
+    return r.id;
+  });
+  const group: RequirementGroup = {
+    id: newId(db, 'G'),
+    org_id: client.id,
+    name: `${name} paperwork`,
+    description: `What ${name} asks ${me.org.name} for.`,
+    requirement_ids: ids,
+    created_at: now,
+    updated_at: now,
+  };
+  db.groups.push(group);
+
+  const rel: Relationship = {
+    id: newId(db, 'L'),
+    client_id: client.id,
+    contractor_id: me.org.id,
+    // Nobody at the client approves you here; the record exists so you can keep yourself ready.
+    status: 'Approved',
+    site_ids: [],
+    group_ids: [group.id],
+    tags: [],
+    // Everyone on the roster counts, so worker documents are tracked for the whole team.
+    worker_ids: db.workers.filter((w) => w.org_id === me.org.id && w.active).map((w) => w.id),
+    created_at: now,
+    invited_by: me.member.name,
+    profile_submitted_at: now,
+    self_managed: true,
+  };
+  db.relationships.push(rel);
+  const { added } = syncRelationship(db, rel.id, me.member.name, now);
+  addActivity(db, { at: now, actor: me.member.name, role: 'contractor', client_id: client.id, relationship_id: rel.id, text: `${me.member.name} started tracking ${name} with ${plural(added, 'item')}`, tone: 'info' });
+  return { id: rel.id, added };
+}
+
+export function saveSelfRequirement(db: DemoDB, me: Me, rel: Relationship, body: Record<string, unknown>, now: string): { id: string; added: number; removed: number } {
+  const content = selfRequirementContent(body);
+  const id = str(body.id);
+  const group = selfGroupOf(db, rel);
+  let reqId = id;
+  if (id) {
+    const r = findRequirement(db, rel.client_id, id);
+    Object.assign(r, content, { updated_at: now, version: r.version + 1 });
+  } else {
+    const r: Requirement = { id: newId(db, 'R'), org_id: rel.client_id, version: 1, created_at: now, updated_at: now, ...content };
+    db.requirements.push(r);
+    reqId = r.id;
+    if (group && !group.requirement_ids.includes(r.id)) group.requirement_ids.push(r.id);
+  }
+  const sync = syncRelationship(db, rel.id, me.member.name, now);
+  return { id: reqId, ...sync };
+}
+
+export function deleteSelfRequirement(db: DemoDB, me: Me, rel: Relationship, id: string, now: string): { removed: number } {
+  findRequirement(db, rel.client_id, id);
+  const group = selfGroupOf(db, rel);
+  if (group) group.requirement_ids = group.requirement_ids.filter((x) => x !== id);
+  db.requirements = db.requirements.filter((r) => r.id !== id);
+  // syncRelationship marks the items no longer required, the same as any other change to the list.
+  const sync = syncRelationship(db, rel.id, me.member.name, now);
+  return { removed: sync.removed };
 }
 
 export function createContractor(db: DemoDB, me: Me, body: Record<string, unknown>, now: string): { id: string; added: number; existing: boolean } {
@@ -1637,7 +1770,7 @@ export function setSubscription(db: DemoDB, orgId: string, active: boolean, by: 
 export function ehsAccounts(ctx: Ctx): EhsAccount[] {
   const rank = { REQUESTED: 0, ACTIVE: 1, NONE: 2 } as const;
   return ctx.db.orgs
-    .filter((o) => !o.is_ehs)
+    .filter((o) => !o.is_ehs && !o.private_owner_id)
     .map((o) => ({
       id: o.id,
       name: o.name,

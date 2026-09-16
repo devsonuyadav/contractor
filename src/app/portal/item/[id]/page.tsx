@@ -80,7 +80,8 @@ export default function PortalItemPage() {
   const worker = data.worker;
   const contractor = data.contractor;
   const open = s.submission.status === 'OPEN' || s.submission.status === 'REJECTED';
-  const canAskException = open && !s.removed && !s.exception_pending && (!s.compliant || s.renewal_open);
+  // A client you keep yourself has nobody to grant an exception: just renew the document.
+  const canAskException = open && !s.removed && !s.exception_pending && !data.contractor.self_managed && (!s.compliant || s.renewal_open);
   const ex = s.exception;
   const previousAnswers =
     (s.submission.evidence?.kind === 'FORM' ? s.submission.evidence.answers : undefined) ??
