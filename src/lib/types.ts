@@ -157,12 +157,21 @@ export interface CompanyProfile {
   employees_count?: number;
 }
 
+/** Managing your own contractors is a paid EZForm feature: EHSSoftware.io turns it on. */
+export type SubscriptionStatus = 'NONE' | 'REQUESTED' | 'ACTIVE';
+
 export interface Organization extends CompanyProfile {
   id: string;
   short: string;
   created_at: string;
   /** Set once the company runs its own contractor program (has a library and sites). */
   program_enabled: boolean;
+  subscription: SubscriptionStatus;
+  subscription_requested_at?: string | null;
+  subscription_requested_by?: string;
+  subscription_since?: string | null;
+  /** EHSSoftware.io staff. They manage subscriptions instead of contractors. */
+  is_ehs?: boolean;
 }
 
 /** A person who signs in for an organization. They can act on both sides of it. */
@@ -565,6 +574,7 @@ export interface Persona {
   runs_program: boolean;
   contractors: number;
   clients: number;
+  is_ehs: boolean;
 }
 
 export type Session = { member_id: string };
@@ -581,8 +591,25 @@ export interface ClientLink {
 export interface SessionContext {
   member: Member;
   org: Organization;
-  program: { enabled: boolean; contractors: number; waiting: number };
+  program: { enabled: boolean; contractors: number; waiting: number; subscription: SubscriptionStatus };
   clients: ClientLink[];
+  /** Signed in as EHSSoftware.io staff. */
+  is_ehs: boolean;
+}
+
+/** One customer in the EHSSoftware.io subscription list. */
+export interface EhsAccount {
+  id: string;
+  name: string;
+  trade: string;
+  contact: ContactInfo;
+  subscription: SubscriptionStatus;
+  requested_at?: string | null;
+  requested_by?: string;
+  since?: string | null;
+  contractors: number;
+  clients: number;
+  workers: number;
 }
 
 /** A client, as the contractor sees the relationship. */

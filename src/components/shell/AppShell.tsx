@@ -29,6 +29,7 @@ import {
   ChevronDownIcon,
   ClipboardDocumentListIcon,
   ClockIcon,
+  CreditCardIcon,
   EnvelopeIcon,
   InboxStackIcon,
   MapPinIcon,
@@ -51,6 +52,8 @@ interface NavItem {
   label: string;
   icon: IconType;
   badge?: number;
+  /** A client under "My compliance". */
+  child?: boolean;
   active: (path: string) => boolean;
 }
 
@@ -73,14 +76,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (isError && session?.member_id !== DEFAULT_SESSION.member_id) signIn(DEFAULT_SESSION);
   }, [isError, session, signIn]);
   const onProgramRoute = PROGRAM_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
-  const blocked = !!ctx && onProgramRoute && !ctx.program.enabled;
+  const onEhsRoute = pathname.startsWith('/ehs');
+  const blocked = !!ctx && ((onProgramRoute && !ctx.program.enabled) || (onEhsRoute && !ctx.is_ehs) || (ctx.is_ehs && !onEhsRoute && pathname !== '/'));
 
   useEffect(() => {
-    if (blocked) router.replace('/setup');
-  }, [blocked, router]);
+    if (blocked) router.replace(ctx?.is_ehs ? '/ehs' : '/setup');
+  }, [blocked, ctx, router]);
 
   const sections: NavSection[] = [];
-  if (ctx?.program.enabled) {
+  if (ctx?.is_ehs) {
+    sections.push({ title: 'EHSSoftware.io', items: [{ href: '/ehs', label: 'Subscriptions', icon: CreditCardIcon, active: (p) => p.startsWith('/ehs') }] });
+  } else if (ctx?.program.enabled) {
     sections.push({
       title: 'Your contractors',
       items: [
@@ -94,40 +100,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ],
     });
   }
-  if (ctx && ctx.clients.length) {
+  if (ctx && !ctx.is_ehs && (ctx.clients.length || !ctx.program.enabled)) {
     sections.push({
-      title: 'Your clients',
+      title: '',
       items: [
-        {
-          href: '/portal',
-          label: ctx.clients.length > 1 ? 'All clients' : 'Client overview',
-          icon: Squares2X2Icon,
-          badge: ctx.clients.reduce((n, c) => n + c.open_items, 0),
-          active: (p) => p === '/portal',
-        },
-        ...ctx.clients.map((c) => ({
-          href: `/portal/clients/${c.id}`,
-          label: c.client.name,
-          icon: CheckBadgeIcon,
-          badge: c.open_items,
-          active: (p: string) => p.startsWith(`/portal/clients/${c.id}`),
-        })),
-      ],
-    });
-  }
-  if (ctx && (ctx.clients.length || !ctx.program.enabled)) {
-    sections.push({
-      title: 'Your company',
-      items: [
+        ...(ctx.clients.length
+          ? [
+              {
+                href: '/portal',
+                label: 'My compliance',
+                icon: Squares2X2Icon,
+                badge: ctx.clients.reduce((n, c) => n + c.open_items, 0),
+                active: (p: string) => p === '/portal',
+              },
+              ...ctx.clients.map((c) => ({
+                href: `/portal/clients/${c.id}`,
+                label: c.client.name,
+                icon: CheckBadgeIcon,
+                badge: c.open_items,
+                child: true,
+                active: (p: string) => p.startsWith(`/portal/clients/${c.id}`),
+              })),
+            ]
+          : []),
         { href: '/portal/workers', label: 'Workers', icon: UserGroupIcon, active: (p) => p.startsWith('/portal/workers') },
         { href: '/portal/profile', label: 'Company profile', icon: BuildingOfficeIcon, active: (p) => p.startsWith('/portal/profile') },
         { href: '/portal/emails', label: 'Inbox', icon: EnvelopeIcon, active: (p) => p.startsWith('/portal/emails') },
       ],
     });
   }
-  if (ctx && !ctx.program.enabled) {
+  if (ctx && !ctx.is_ehs && !ctx.program.enabled) {
     sections.push({
-      title: 'Grow',
+      title: '',
       items: [{ href: '/setup', label: 'Manage your own contractors', icon: PlusCircleIcon, active: (p) => p.startsWith('/setup') }],
     });
   }
@@ -144,13 +148,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gray-100 text-[12px] font-semibold text-ink-2">{ctx.org.short}</span>
               <span className="min-w-0 leading-tight">
                 <span className="block truncate text-[13.5px] font-semibold text-ink">{ctx.org.name}</span>
-                <span className="block truncate text-[11.5px] text-ink-3">{orgRoleLine(ctx.program.enabled, ctx.program.contractors, ctx.clients.length)}</span>
+                <span className="block truncate text-[11.5px] text-ink-3">
+                  {ctx.is_ehs ? 'EZForm staff' : orgRoleLine(ctx.program.enabled, ctx.program.contractors, ctx.clients.length)}
+                </span>
               </span>
             </div>
             <nav className="flex-1 overflow-y-auto px-3 pb-3" aria-label="Main">
               {sections.map((sec) => (
-                <div key={sec.title} className="pt-4">
-                  <p className="eyebrow px-3 pb-1">{sec.title}</p>
+                <div key={sec.title || sec.items[0].href} className="pt-4">
+                  {sec.title && <p className="eyebrow px-3 pb-1">{sec.title}</p>}
                   <div className="space-y-0.5">
                     {sec.items.map((item) => (
                       <NavLink key={item.href} item={item} active={item.active(pathname)} />
@@ -199,11 +205,11 @@ function NavLink({ item, active, compact = false }: { item: NavItem; active: boo
     <Link
       href={item.href}
       aria-current={active ? 'page' : undefined}
-      className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
-        active ? 'bg-primary-50 font-medium text-primary' : 'text-ink-2 hover:bg-gray-100'
-      }`}
+      className={`flex shrink-0 items-center gap-3 rounded-lg py-2 pr-3 text-[13.5px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
+        item.child && !compact ? 'pl-8' : 'pl-3'
+      } ${active ? 'bg-primary-50 font-medium text-primary' : 'text-ink-2 hover:bg-gray-100'}`}
     >
-      <Icon className="h-5 w-5 shrink-0" />
+      <Icon className={`${item.child && !compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0`} />
       <span className={compact ? 'whitespace-nowrap' : 'flex-1 truncate'}>{item.label}</span>
       {item.badge ? (
         <span className={`grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-semibold ${active ? 'bg-primary text-white' : 'bg-primary-100 text-primary-700'}`}>
@@ -338,10 +344,11 @@ function PersonaMenu() {
   const { session, signIn } = useSession();
   const { data: personas } = usePersonas();
   const me = personas?.find((p) => p.member_id === session?.member_id);
-  const both = personas?.filter((p) => p.runs_program && p.clients > 0) ?? [];
-  const clients = personas?.filter((p) => p.runs_program && p.clients === 0) ?? [];
-  const contractors = personas?.filter((p) => !p.runs_program) ?? [];
-  const describe = (p: Persona) => `${p.title}, ${p.org_name} · ${orgRoleLine(p.runs_program, p.contractors, p.clients)}`;
+  const staff = personas?.filter((p) => p.is_ehs) ?? [];
+  const both = personas?.filter((p) => !p.is_ehs && p.runs_program && p.clients > 0) ?? [];
+  const clients = personas?.filter((p) => !p.is_ehs && p.runs_program && p.clients === 0) ?? [];
+  const contractors = personas?.filter((p) => !p.is_ehs && !p.runs_program) ?? [];
+  const describe = (p: Persona) => (p.is_ehs ? `${p.title} · turns subscriptions on` : `${p.title}, ${p.org_name} · ${orgRoleLine(p.runs_program, p.contractors, p.clients)}`);
 
   return (
     <Dropdown placement="bottom-end">
@@ -365,6 +372,13 @@ function PersonaMenu() {
         </button>
       </DropdownTrigger>
       <DropdownMenu aria-label="Demo logins" className="max-h-[70vh] overflow-y-auto" onAction={(key) => signIn({ member_id: String(key) })}>
+        <DropdownSection title="EHSSoftware.io staff" showDivider>
+          {staff.map((p) => (
+            <DropdownItem key={p.member_id} description={describe(p)}>
+              {p.name}
+            </DropdownItem>
+          ))}
+        </DropdownSection>
         <DropdownSection title="Runs a program and works for clients" showDivider>
           {both.map((p) => (
             <DropdownItem key={p.member_id} description={describe(p)}>

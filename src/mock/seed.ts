@@ -14,7 +14,7 @@ import * as C from './content';
 import { addActivity, addEmail, emailSponsor, gateCheck, inviteEmail, labelOf, shortName, sponsorEmails, sweep, syncRelationship } from './logic';
 import { certificateDataUrl, hashString, mulberry32, signatureDataUrl } from './svg';
 
-export const SCHEMA = 8;
+export const SCHEMA = 9;
 
 export const DEFAULT_MEMBER = 'M-PRIYA';
 
@@ -30,6 +30,10 @@ interface OrgSpec {
   employees?: number;
   prefix: string;
   program?: boolean;
+  /** Left out: no subscription. 'REQUESTED' is waiting for EHSSoftware.io to decide. */
+  subscription?: 'REQUESTED';
+  /** EHSSoftware.io staff, who turn subscriptions on. */
+  ehs?: boolean;
   /** The login for the company. Defaults to the main contact. */
   member?: { id: string; name: string; title: string; email: string };
   workers: { name: string; trade: string; addedAgo?: number }[];
@@ -54,6 +58,13 @@ interface RelSpec {
 }
 
 const ORGS: OrgSpec[] = [
+  {
+    id: 'O-EHS', name: 'EHSSoftware.io', trade: 'EHS software', created: 1200, ehs: true,
+    contact: { name: 'Sam Rivera', title: 'Customer Success', email: 'sam.rivera@ehssoftware.io', phone: '(555) 010-9000' },
+    address: 'EHSSoftware.io', domain: 'ehssoftware.io', prefix: 'EHS',
+    member: { id: 'M-EHS', name: 'Sam Rivera', title: 'Customer Success, EHSSoftware.io', email: 'sam.rivera@ehssoftware.io' },
+    workers: [],
+  },
   {
     id: 'O-RIVERSIDE', name: 'Riverside Energy', trade: 'Power generation', created: 900, program: true,
     contact: { name: 'Priya Nair', title: 'EHS Manager', email: 'priya.nair@riverside-energy.example', phone: '(555) 010-0100' },
@@ -83,7 +94,7 @@ const ORGS: OrgSpec[] = [
     ],
   },
   {
-    id: 'O-ORTEGA', name: 'Ortega Roofing', trade: 'Roofing', created: 820,
+    id: 'O-ORTEGA', name: 'Ortega Roofing', trade: 'Roofing', created: 820, subscription: 'REQUESTED',
     contact: { name: 'Luis Ortega', title: 'Owner', email: 'luis@ortegaroofing.example', phone: '(555) 010-2231' },
     address: '1180 Mill Creek Rd, Riverside', domain: 'ortegaroofing.example', license: 'RC-448812', employees: 14, prefix: 'ORT',
     workers: [
@@ -280,6 +291,11 @@ export function buildSeed(): DemoDB {
       employees_count: s.employees,
       created_at: at(s.created),
       program_enabled: !!s.program,
+      subscription: s.program ? 'ACTIVE' : s.subscription === 'REQUESTED' ? 'REQUESTED' : 'NONE',
+      subscription_since: s.program ? at(s.created - 20) : null,
+      subscription_requested_at: s.subscription === 'REQUESTED' ? at(2) : null,
+      subscription_requested_by: s.subscription === 'REQUESTED' ? (s.member?.name ?? s.contact.name) : undefined,
+      is_ehs: s.ehs || undefined,
     });
     const m: Member = s.member
       ? { ...s.member, org_id: s.id }

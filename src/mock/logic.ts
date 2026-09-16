@@ -25,6 +25,7 @@ import type {
   GateResult,
   GroupRow,
   Member,
+  EhsAccount,
   Organization,
   OrgMatch,
   OrgSummary,
@@ -44,6 +45,7 @@ import type {
   RosterView,
   Score,
   Session,
+  SubscriptionStatus,
   SessionContext,
   Site,
   SiteRow,
@@ -729,6 +731,7 @@ export function personas(db: DemoDB): Persona[] {
         org_id: org.id,
         org_name: org.name,
         runs_program: org.program_enabled,
+        is_ehs: !!org.is_ehs,
         contractors: db.relationships.filter((r) => r.client_id === org.id).length,
         clients: db.relationships.filter((r) => r.contractor_id === org.id).length,
       };
@@ -745,7 +748,9 @@ export function sessionContext(ctx: Ctx, me: Me): SessionContext {
       enabled: me.org.program_enabled,
       contractors: relsAsClient(ctx, me.org.id).length,
       waiting: q.reviews.length + q.exceptions.length + q.applications.length + q.flow_down.length,
+      subscription: me.org.subscription,
     },
+    is_ehs: !!me.org.is_ehs,
     clients: relsAsContractor(ctx, me.org.id)
       .map((r) => ({
         id: r.id,
@@ -994,7 +999,7 @@ export function searchOrgs(ctx: Ctx, clientId: string, q: string): OrgMatch[] {
   const linked = new Set(relsAsClient(ctx, clientId).map((r) => r.contractor_id));
   const domain = term.includes('@') ? term.split('@')[1] : '';
   return ctx.db.orgs
-    .filter((o) => o.id !== clientId && !linked.has(o.id))
+    .filter((o) => o.id !== clientId && !linked.has(o.id) && !o.is_ehs)
     .filter((o) => o.name.toLowerCase().includes(term) || o.trade.toLowerCase().includes(term) || (!!domain && o.contact.email.toLowerCase().endsWith(`@${domain}`)))
     .slice(0, 6)
     .map((o) => ({ id: o.id, name: o.name, trade: o.trade, contact_name: o.contact.name, contact_email: o.contact.email, runs_program: o.program_enabled }));
@@ -1013,6 +1018,7 @@ export function createOrg(db: DemoDB, profile: { name: string; trade: string; co
     address: '',
     created_at: now,
     program_enabled: false,
+    subscription: 'NONE',
   };
   db.orgs.push(org);
   // The invited contact becomes the company's first login when they accept the invitation.
@@ -1567,10 +1573,13 @@ export function updateSite(db: DemoDB, orgId: string, id: string, body: Record<s
  * Turns on the client side for a company that until now only worked for others: a starter
  * library it can edit, one baseline group and a first project to assign subcontractors to.
  */
-export function enableProgram(db: DemoDB, me: Me, now: string): { requirements: number } {
-  const org = me.org;
-  if (org.program_enabled) return { requirements: 0 };
-  const by = me.member.name;
+/** Fills a brand new program with a starter library. Called when EHSSoftware.io turns the subscription on. */
+function startProgram(db: DemoDB, org: Organization, by: string, now: string): { requirements: number } {
+  // Turning a subscription off keeps the library, so only a company that never had one gets the starter set.
+  if (org.program_enabled || db.requirements.some((r) => r.org_id === org.id)) {
+    org.program_enabled = true;
+    return { requirements: 0 };
+  }
   const add = (content: RequirementContent) => {
     const r: Requirement = { id: newId(db, 'R'), org_id: org.id, version: 1, created_at: now, updated_at: now, ...content };
     db.requirements.push(r);
@@ -1584,8 +1593,65 @@ export function enableProgram(db: DemoDB, me: Me, now: string): { requirements: 
   ];
   db.groups.push({ id: newId(db, 'G'), org_id: org.id, name: 'Subcontractor baseline', description: 'Insurance, safety rules and orientation for every subcontractor.', requirement_ids: ids, created_at: now, updated_at: now });
   org.program_enabled = true;
-  addActivity(db, { at: now, actor: by, role: 'admin', client_id: org.id, text: `${by} started ${possessive(org.name)} contractor program with ${plural(ids.length, 'starter requirement')}`, tone: 'good' });
+  addActivity(db, { at: now, actor: by, role: 'system', client_id: org.id, text: `Contractor program turned on for ${org.name} with ${plural(ids.length, 'starter requirement')}`, tone: 'good' });
   return { requirements: ids.length };
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions: EHSSoftware.io decides who can manage their own contractors
+// ---------------------------------------------------------------------------
+
+/** A company that only works for others asks EHSSoftware.io to turn the program on. */
+export function requestSubscription(db: DemoDB, me: Me, now: string): { status: SubscriptionStatus } {
+  const org = me.org;
+  if (org.is_ehs) throw new HttpError(400, 'EHSSoftware.io staff manage subscriptions instead.');
+  if (org.subscription === 'ACTIVE') return { status: 'ACTIVE' };
+  if (org.subscription !== 'REQUESTED') {
+    org.subscription = 'REQUESTED';
+    org.subscription_requested_at = now;
+    org.subscription_requested_by = me.member.name;
+  }
+  return { status: org.subscription };
+}
+
+/** EHSSoftware.io turns a subscription on or off. Turning it on starts the program. */
+export function setSubscription(db: DemoDB, orgId: string, active: boolean, by: string, now: string): { status: SubscriptionStatus; requirements: number } {
+  const org = findOrg(db, orgId);
+  if (org.is_ehs) throw new HttpError(400, "EHSSoftware.io doesn't subscribe to itself.");
+  if (!active) {
+    org.subscription = 'NONE';
+    org.program_enabled = false;
+    org.subscription_since = null;
+    org.subscription_requested_at = null;
+    org.subscription_requested_by = undefined;
+    return { status: org.subscription, requirements: 0 };
+  }
+  const { requirements } = startProgram(db, org, by, now);
+  org.subscription = 'ACTIVE';
+  org.subscription_since = now;
+  org.subscription_requested_at = null;
+  return { status: org.subscription, requirements };
+}
+
+/** Every customer, with the companies waiting for a decision first. */
+export function ehsAccounts(ctx: Ctx): EhsAccount[] {
+  const rank = { REQUESTED: 0, ACTIVE: 1, NONE: 2 } as const;
+  return ctx.db.orgs
+    .filter((o) => !o.is_ehs)
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      trade: o.trade,
+      contact: o.contact,
+      subscription: o.subscription,
+      requested_at: o.subscription_requested_at ?? null,
+      requested_by: o.subscription_requested_by,
+      since: o.subscription_since ?? null,
+      contractors: relsAsClient(ctx, o.id).length,
+      clients: relsAsContractor(ctx, o.id).length,
+      workers: ctx.db.workers.filter((w) => w.org_id === o.id).length,
+    }))
+    .sort((a, b) => rank[a.subscription] - rank[b.subscription] || a.name.localeCompare(b.name));
 }
 
 // ---------------------------------------------------------------------------

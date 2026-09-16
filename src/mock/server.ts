@@ -52,6 +52,11 @@ function viewerOf(db: DemoDB, req: Req, relId: string): 'client' | 'contractor' 
   throw new HttpError(403, "That record belongs to companies you don't work with.");
 }
 
+/** EHSSoftware.io staff only. */
+function ehs(req: Req): void {
+  if (!req.me.org.is_ehs) throw new HttpError(403, 'Only EHSSoftware.io staff can do that.');
+}
+
 function program(req: Req): string {
   if (!req.me.org.program_enabled) throw new HttpError(403, `${req.me.org.name} doesn't run a contractor program yet.`);
   return req.me.org.id;
@@ -66,7 +71,17 @@ function workerOnMyRoster(db: DemoDB, req: Req, id: string) {
 const routes: Record<string, Handler> = {
   // Session ----------------------------------------------------------------
   'GET Session/GetContext': (_db, ctx, req) => L.sessionContext(ctx, req.me),
-  'POST Org/EnableProgram': (db, ctx, req) => L.enableProgram(db, req.me, ctx.now),
+  'POST Org/RequestSubscription': (db, ctx, req) => L.requestSubscription(db, req.me, ctx.now),
+
+  // EHSSoftware.io staff: who may manage their own contractors
+  'GET Ehs/GetAccounts': (_db, ctx, req) => {
+    ehs(req);
+    return L.ehsAccounts(ctx);
+  },
+  'POST Ehs/SetSubscription': (db, ctx, req) => {
+    ehs(req);
+    return L.setSubscription(db, str(req.body.org_id), req.body.active === true, req.name, ctx.now);
+  },
   'PUT Org/Update': (db, ctx, req) => L.updateOrgProfile(db, req.me, req.body, ctx.now),
   'GET Org/Search': (_db, ctx, req) => L.searchOrgs(ctx, program(req), str(req.params.q)),
 

@@ -30,7 +30,7 @@ export default function PortalOverviewPage() {
   if (!clients.length) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Your clients" description={`Companies that have added ${org.name} as a contractor on EZForm.`} />
+        <PageHeader title="My compliance" description={`What the companies ${org.name} works for need from you. Nothing yet.`} />
         <Card>
           <EmptyState
             icon={BuildingOffice2Icon}
@@ -52,8 +52,8 @@ export default function PortalOverviewPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Your clients"
-        description={`What ${clients.length === 1 ? 'your client needs' : `your ${clients.length} clients need`} from ${org.name}. Your profile, workers and documents are shared across all of them; each client keeps its own checklist and approval.`}
+        title="My compliance"
+        description={`What ${clients.length === 1 ? 'the company you work for needs' : `the ${clients.length} companies you work for need`} from ${org.name}. Your profile, workers and documents are shared across all of them; each one keeps its own checklist and approval.`}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

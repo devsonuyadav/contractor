@@ -12,6 +12,7 @@ import type {
   ContractorRow,
   ContractorStatus,
   DashboardSummary,
+  EhsAccount,
   Evidence,
   GateEntry,
   GateLogEntry,
@@ -30,6 +31,7 @@ import type {
   SessionContext,
   SiteRow,
   SubcontractorOption,
+  SubscriptionStatus,
 } from '@/lib/types';
 
 export const ROOT = 'ezc';
@@ -64,6 +66,7 @@ export const useGroups = () => useQuery({ queryKey: [ROOT, 'groups'], queryFn: (
 export const useSites = () => useQuery({ queryKey: [ROOT, 'sites'], queryFn: () => apiGet<SiteRow[]>('Site/GetList') });
 export const useActivity = (contractorId?: string) =>
   useQuery({ queryKey: [ROOT, 'activity', contractorId ?? 'all'], queryFn: () => apiGet<ActivityEvent[]>('ComplianceActivity/GetList', { contractor_id: contractorId, limit: 120 }) });
+export const useEhsAccounts = () => useQuery({ queryKey: [ROOT, 'ehs-accounts'], queryFn: () => apiGet<EhsAccount[]>('Ehs/GetAccounts') });
 export const useOutbox = () => useQuery({ queryKey: [ROOT, 'outbox'], queryFn: () => apiGet<OutboxEmail[]>('Notification/GetOutbox') });
 export const useGateRoster = (siteId?: string) =>
   useQuery({ queryKey: [ROOT, 'gate-roster', siteId], queryFn: () => apiGet<GateEntry[]>('Gate/GetRoster', { site_id: siteId }), enabled: !!siteId });
@@ -146,7 +149,8 @@ export const Api = {
   advanceClock: (days: number) => apiPost<ClockInfo>('Demo/AdvanceClock', { days }),
   resetDemo: () => apiPost<{ ok: boolean }>('Demo/Reset'),
 
-  enableProgram: () => apiPost<{ requirements: number }>('Org/EnableProgram'),
+  requestSubscription: () => apiPost<{ status: SubscriptionStatus }>('Org/RequestSubscription'),
+  setSubscription: (b: { org_id: string; active: boolean }) => apiPost<{ status: SubscriptionStatus; requirements: number }>('Ehs/SetSubscription', b),
   updateProfile: (b: ProfilePatch) => apiPut<{ id: string }>('Org/Update', b),
 
   createContractor: (b: NewContractorInput) => apiPost<{ id: string; added: number; existing: boolean }>('Contractor/Create', b),
