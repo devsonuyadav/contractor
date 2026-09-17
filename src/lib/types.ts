@@ -147,12 +147,23 @@ export interface ContactInfo {
 }
 
 /** What a company says about itself. Owned by the company, shown to every client. */
+/**
+ * What a company says about itself: one record in three blocks, each filled only if its roles need it.
+ *
+ *   Identity        name, address, website, main contact — every company, whichever side it is on
+ *   As a contractor trade, licence, size — what a client weighs up before engaging them
+ *   As a client     program contact and invitation note — what its contractors see coming from it
+ *
+ * Deliberately no insurance, EMR or safety statistics: those expire and need checking, so they belong in
+ * requirements, which carry an expiry date, a reviewer and a renewal.
+ */
 export interface CompanyProfile {
   name: string;
-  trade: string;
   contact: ContactInfo;
   address: string;
   website?: string;
+  /** As a contractor. Asked for before the company can apply to a client. */
+  trade: string;
   license_no?: string;
   employees_count?: number;
 }
@@ -166,6 +177,10 @@ export interface Organization extends CompanyProfile {
   created_at: string;
   /** Set once the company runs its own contractor program (has a library and sites). */
   program_enabled: boolean;
+  /** As a client: who its contractors hear from. Falls back to the first member. */
+  program_contact?: ContactInfo;
+  /** As a client: a line added to the invitations its contractors receive. */
+  invite_note?: string;
   subscription: SubscriptionStatus;
   subscription_requested_at?: string | null;
   subscription_requested_by?: string;

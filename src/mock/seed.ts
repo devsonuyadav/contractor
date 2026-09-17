@@ -14,7 +14,7 @@ import * as C from './content';
 import { addActivity, addEmail, emailSponsor, gateCheck, inviteEmail, labelOf, shortName, sponsorEmails, sweep, syncRelationship } from './logic';
 import { certificateDataUrl, hashString, mulberry32, signatureDataUrl } from './svg';
 
-export const SCHEMA = 9;
+export const SCHEMA = 10;
 
 export const DEFAULT_MEMBER = 'M-PRIYA';
 
@@ -36,6 +36,9 @@ interface OrgSpec {
   ehs?: boolean;
   /** The login for the company. Defaults to the main contact. */
   member?: { id: string; name: string; title: string; email: string };
+  /** As a client: who its contractors hear from, and a line added to its invitations. */
+  programContact?: ContactInfo;
+  inviteNote?: string;
   workers: { name: string; trade: string; addedAgo?: number }[];
 }
 
@@ -70,6 +73,8 @@ const ORGS: OrgSpec[] = [
     contact: { name: 'Priya Nair', title: 'EHS Manager', email: 'priya.nair@riverside-energy.example', phone: '(555) 010-0100' },
     address: '400 River Rd, Riverside', domain: 'riverside-energy.example', prefix: 'RVE',
     member: { id: 'M-PRIYA', name: 'Priya Nair', title: 'EHS Manager', email: 'priya.nair@riverside-energy.example' },
+    programContact: { name: 'Riverside Energy EHS team', title: 'Contractor compliance', email: 'contractors@riverside-energy.example', phone: '(555) 010-0110' },
+    inviteNote: 'Questions about insurance or the prequalification questionnaire? Call the EHS team before you upload anything.',
     workers: [],
   },
   {
@@ -77,6 +82,7 @@ const ORGS: OrgSpec[] = [
     contact: { name: 'Grace Liu', title: 'Contractor Safety Coordinator', email: 'grace.liu@northwind-utilities.example', phone: '(555) 010-0200' },
     address: '1 Reservoir Way, Northwind', domain: 'northwind-utilities.example', prefix: 'NWU',
     member: { id: 'M-GRACE', name: 'Grace Liu', title: 'Contractor Safety Coordinator', email: 'grace.liu@northwind-utilities.example' },
+    programContact: { name: 'Grace Liu', title: 'Contractor Safety Coordinator', email: 'grace.liu@northwind-utilities.example', phone: '(555) 010-0200' },
     workers: [],
   },
   {
@@ -296,6 +302,8 @@ export function buildSeed(): DemoDB {
       subscription_requested_at: s.subscription === 'REQUESTED' ? at(2) : null,
       subscription_requested_by: s.subscription === 'REQUESTED' ? (s.member?.name ?? s.contact.name) : undefined,
       is_ehs: s.ehs || undefined,
+      program_contact: s.programContact,
+      invite_note: s.inviteNote,
     });
     const m: Member = s.member
       ? { ...s.member, org_id: s.id }

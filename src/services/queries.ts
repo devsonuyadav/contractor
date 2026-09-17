@@ -106,6 +106,9 @@ export interface NewContractorInput {
 }
 
 export interface ProfilePatch {
+  /** Client-side blocks; ignored unless the company runs a program. */
+  program_contact?: ContactInfo;
+  invite_note?: string;
   name?: string;
   trade?: string;
   contact?: ContactInfo;

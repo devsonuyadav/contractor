@@ -264,6 +264,18 @@ export function emailClient(db: DemoDB, clientId: string, kind: EmailKind, subje
   addEmail(db, { at, to: m.email, to_name: m.name, subject, body, kind, client_id: clientId, relationship_id: relId, audience: 'admin' });
 }
 
+/** How a client signs what its contractors receive: its program contact, else its first member. */
+export function programSignature(db: DemoDB, clientId: string): string {
+  const org = findOrg(db, clientId);
+  const m = db.members.find((x) => x.org_id === clientId);
+  const c = org.program_contact;
+  const name = c?.name || m?.name || '';
+  const title = c?.title || (c ? '' : m?.title) || '';
+  const email = c?.email || m?.email || '';
+  const line = [email, c?.phone].filter(Boolean).join(' · ');
+  return [org.name, name ? `${name}${title ? `, ${title}` : ''}` : '', line].filter(Boolean).join('\n');
+}
+
 export function inviteEmail(db: DemoDB, rel: Relationship, at: string, existing = false): void {
   const client = findOrg(db, rel.client_id);
   const org = findOrg(db, rel.contractor_id);
@@ -275,7 +287,7 @@ export function inviteEmail(db: DemoDB, rel: Relationship, at: string, existing 
     rel,
     'INVITE',
     `You're invited to ${possessive(client.name)} contractor program`,
-    `Hi ${firstName(org.contact.name)},\n\n${intro}\n\nTo get started:\n1. Check your company profile and submit your application to ${client.name}.\n2. Choose which of your workers go on the ${client.name} crew.\n3. Work through the checklist: insurance, prequalification, training and policy signoffs.\n\nOpen your checklist: ${portalUrl(rel)}\n\nThanks,\n${client.name}`,
+    `Hi ${firstName(org.contact.name)},\n\n${intro}\n\nTo get started:\n1. Check your company profile and submit your application to ${client.name}.\n2. Choose which of your workers go on the ${client.name} crew.\n3. Work through the checklist: insurance, prequalification, training and policy signoffs.\n\nOpen your checklist: ${portalUrl(rel)}${client.invite_note ? `\n\n${client.invite_note}` : ''}\n\nThanks,\n${programSignature(db, client.id)}`,
     at,
   );
 }
@@ -1236,6 +1248,18 @@ export function updateOrgProfile(db: DemoDB, me: Me, body: Record<string, unknow
       phone: str(ct.phone ?? o.contact.phone).trim(),
     };
   }
+  // The client-side block only means anything once the company runs a program of its own.
+  if (o.program_enabled && body.program_contact && typeof body.program_contact === 'object') {
+    const pc = body.program_contact as Partial<ContactInfo>;
+    const name = str(pc.name).trim();
+    const email = str(pc.email).trim();
+    if (!name && !email) o.program_contact = undefined;
+    else {
+      if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Enter a valid email address for the contact your contractors see.');
+      o.program_contact = { name: name || o.name, title: str(pc.title).trim() || undefined, email, phone: str(pc.phone).trim() };
+    }
+  }
+  if (o.program_enabled && 'invite_note' in body) o.invite_note = str(body.invite_note).trim() || undefined;
   // Every client sees the same profile, so each of them gets the update in its feed.
   for (const rel of db.relationships.filter((r) => r.contractor_id === o.id)) {
     addActivity(db, { at: now, actor: me.member.name, role: 'contractor', client_id: rel.client_id, relationship_id: rel.id, text: `${me.member.name} updated the ${o.name} company profile`, tone: 'info' });
@@ -1324,7 +1348,7 @@ export function sponsorEmails(db: DemoDB, rel: Relationship, by: string, at: str
     rel,
     'INVITE',
     `${sp.org.name} brought you onto ${possessive(client.name)} work`,
-    `Hi ${firstName(org.contact.name)},\n\n${by} at ${sp.org.name} added ${org.name} as their subcontractor for ${client.name}${sites ? ` (${sites})` : ''}.\n\n${client.name} asks its contractors' subcontractors for some of the same things it asks of ${sp.org.name}. Your checklist for ${client.name} is ready. ${sp.org.name} checks what you send before ${client.name} reviews it.\n\nChoose your crew and start here: ${portalUrl(rel)}`,
+    `Hi ${firstName(org.contact.name)},\n\n${by} at ${sp.org.name} added ${org.name} as their subcontractor for ${client.name}${sites ? ` (${sites})` : ''}.\n\n${client.name} asks its contractors' subcontractors for some of the same things it asks of ${sp.org.name}. Your checklist for ${client.name} is ready. ${sp.org.name} checks what you send before ${client.name} reviews it.\n\nChoose your crew and start here: ${portalUrl(rel)}${client.invite_note ? `\n\n${client.invite_note}` : ''}\n\n${programSignature(db, client.id)}`,
     at,
   );
   emailClient(

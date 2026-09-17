@@ -100,7 +100,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ],
     });
   }
-  if (ctx && !ctx.is_ehs && (ctx.clients.length || !ctx.program.enabled)) {
+  // Every company can edit its own profile; the crew roster and the contractor inbox only matter once it works for someone.
+  if (ctx && !ctx.is_ehs) {
     sections.push({
       title: '',
       items: [
@@ -123,9 +124,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               })),
             ]
           : []),
-        { href: '/portal/workers', label: 'Workers', icon: UserGroupIcon, active: (p) => p.startsWith('/portal/workers') },
+        ...(ctx.clients.length ? [{ href: '/portal/workers', label: 'Workers', icon: UserGroupIcon, active: (p: string) => p.startsWith('/portal/workers') }] : []),
         { href: '/portal/profile', label: 'Company profile', icon: BuildingOfficeIcon, active: (p) => p.startsWith('/portal/profile') },
-        { href: '/portal/emails', label: 'Inbox', icon: EnvelopeIcon, active: (p) => p.startsWith('/portal/emails') },
+        ...(ctx.clients.length ? [{ href: '/portal/emails', label: 'Inbox', icon: EnvelopeIcon, active: (p: string) => p.startsWith('/portal/emails') }] : []),
       ],
     });
   }
@@ -345,8 +346,9 @@ function PersonaMenu() {
   const { data: personas } = usePersonas();
   const me = personas?.find((p) => p.member_id === session?.member_id);
   const staff = personas?.filter((p) => p.is_ehs) ?? [];
-  const both = personas?.filter((p) => !p.is_ehs && p.runs_program && p.clients > 0) ?? [];
-  const clients = personas?.filter((p) => !p.is_ehs && p.runs_program && p.clients === 0) ?? [];
+  // Running a program is one capability; whether they also work for clients is just their relationships,
+  // and the description line already says so.
+  const withProgram = personas?.filter((p) => !p.is_ehs && p.runs_program) ?? [];
   const contractors = personas?.filter((p) => !p.is_ehs && !p.runs_program) ?? [];
   const describe = (p: Persona) => (p.is_ehs ? `${p.title} · turns subscriptions on` : `${p.title}, ${p.org_name} · ${orgRoleLine(p.runs_program, p.contractors, p.clients)}`);
 
@@ -379,15 +381,8 @@ function PersonaMenu() {
             </DropdownItem>
           ))}
         </DropdownSection>
-        <DropdownSection title="Runs a program and works for clients" showDivider>
-          {both.map((p) => (
-            <DropdownItem key={p.member_id} description={describe(p)}>
-              {p.name}
-            </DropdownItem>
-          ))}
-        </DropdownSection>
-        <DropdownSection title="Runs a contractor program" showDivider>
-          {clients.map((p) => (
+        <DropdownSection title="Companies with a program" showDivider>
+          {withProgram.map((p) => (
             <DropdownItem key={p.member_id} description={describe(p)}>
               {p.name}
             </DropdownItem>

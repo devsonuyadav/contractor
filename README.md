@@ -42,12 +42,22 @@ A company is never "a client" or "a contractor". It is an **organization**, and 
 
 | Record | Owned by | What it is |
 | --- | --- | --- |
-| Organization | itself | Company profile and contact, shared with every client. `program_enabled` turns on the client side |
+| Organization | itself | Company profile, shared with every client. `program_enabled` turns on the client side |
 | Member | organization | A login. One member acts on both sides of their company |
 | Worker | organization (employer) | One roster and one badge ID, valid at every client |
 | Requirement, group, site | organization (as client) | Its program. Other companies never see or reuse it |
 | Relationship | client org → contractor org | Status (New, Pending, Approved, Denied), sites, groups, tags, and the **crew** (which of the contractor's workers work for this client). `sponsor_id` marks a subcontractor brought in by another contractor |
 | Assignment | relationship | One row per relationship × requirement (× crew member): current approval, open submission, exception, history |
+
+The profile is **identity, not compliance**, in three blocks a company fills only as its roles need:
+
+| Block | Who fills it | Fields |
+| --- | --- | --- |
+| Company | every company | name, address, website, main contact |
+| As a contractor | companies that work for others | trade, licence number, employees |
+| As a client | companies running a program | contact its contractors hear from, note added to its invitations |
+
+Anything a client has to *verify* — insurance, EMR, safety statistics, training — stays out of the profile and goes in requirements, where it carries an expiry date, a reviewer and a renewal. So a client like Riverside is never asked for a trade or a licence, and a contractor's insurance lives in a certificate that expires rather than a text field that quietly goes stale.
 
 Access follows the relationship, not a role: every route checks whether the signed-in company is the client or the contractor on that record (`asClient` / `asContractor` in `src/mock/server.ts`).
 
